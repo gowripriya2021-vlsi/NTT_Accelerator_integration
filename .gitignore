@@ -1,0 +1,76 @@
+# --- BSV / Bluespec build artifacts (generated, not source) ---
+*.bo
+*.ba
+*.cxx
+Bluesim.sched
+*_verilog/
+*.info
+*.sched
+vHDL/
+
+# --- Verilog / RTL sim waveforms/dumps ---
+*.vcd
+*.vpd
+*.fsdb
+*.saif
+*.wlf
+*.shm/
+csrc/
+DVEfiles/
+ucli.key
+vc_hdrs.h
+
+# --- VCS / Synopsys simulation binaries & databases ---
+simv
+simv_*
+simv.daidir/
+*.daidir/
+*.vdb
+novas.*
+verdiLog/
+inter.vpd
+AN.DB/
+.vcs_lib_lock
+
+# --- Verilator generated object dirs (NOT source headers) ---
+# Only ignore actual Verilator obj_dir output folders, not source .h files
+obj_dir/
+obj_dir (Copy)/
+**/obj_dir/
+**/obj_dir (Copy)/
+
+# --- Design Compiler / Synopsys ASIC synthesis (generated reports/DBs) ---
+*.mr
+*.rpt
+*.svf
+*.ddc
+*.pvl
+default.svf
+alib-52/
+*.syn
+*.mapped.v
+
+# --- C build artifacts (compiled binaries only, not source/headers) ---
+*.elf
+*.o
+*.a
+*.so
+
+# --- LaTeX / Beamer build artifacts ---
+*.aux
+*.bbl
+*.blg
+*.nav
+*.out
+*.snm
+*.toc
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+*.vrb
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+*.swp
+.DS_Store

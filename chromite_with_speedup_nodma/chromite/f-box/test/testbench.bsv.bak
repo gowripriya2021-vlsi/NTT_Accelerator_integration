@@ -1,0 +1,167 @@
+/*
+  Copyright (c) 2022 Incore Semiconductors Pvt. Ltd. All Rights Reserved. See LICENSE.incore for more details.
+  Created On:  Wed Mar 09, 2022 10:02:45 
+  Author(s): 
+  - S Pawan Kumar <pawan.kumar@incoresemi.com> gitlab: @pawks github: @pawks
+*/
+package testbench;
+  import instances :: * ;
+  import fma       :: * ;
+  import recFN     :: * ;
+
+  import GetPut    :: * ;
+  import FIFOF     :: * ;
+  import Vector    :: * ;
+  import retiming  :: * ;
+  import fpu_recfn :: * ;
+
+  `include "Logger.bsv"
+
+  typedef Bit#(TAdd#(`expwidth,`sigwidth)) FP;
+
+  typedef struct{
+    FP a;
+    FP b;
+    FP c;
+    Bit#(3) rm;
+  } Input deriving (Bits,Eq,FShow);
+
+  typedef struct{
+    FP result;
+    Bit#(5) flags;
+  } Output deriving (Bits,Eq,FShow);
+
+  module mktest();
+    /* Ifc_fNToRecFN#(11,53) cvt <- mk_fNToRecFN; */
+    Ifc_fNToRecFN#(8,24) cvt <- mk_fNToRecFN;
+    Ifc_recFNToFN#(11,53) ocvt <- mk_recFNToFN;
+    Ifc_fNToRecFN#(11,53) cvt2 <- mk_fNToRecFN;
+    Reg#(Bool) rg_done <- mkReg(False);
+    Reg#(Bit#(5)) rg_count <- mkReg(0);
+    Bit#(32) val[7] = {32'h424DB851,0,maxBound,32'h8FC00000,32'h8F800000,32'h8f800001,
+                        32'h00012300};
+    
+    rule rl_cvt(!rg_done);
+      Recfmt#(8,24) rval = fn_to_recfn(val[rg_count]);
+      Bit#(64) fval = {maxBound,val[rg_count]};
+      Bit#(32) oval = recfn_to_fn(rval);
+      cvt.request(val[rg_count]);
+      ocvt.request({maxBound,cvt.out()});
+      Bit#(65) rfval = {maxBound,cvt.out()};
+      cvt2.request(ocvt.out());
+      Recfmt#(11,53) rval1 = fn_to_recfn({maxBound,rval});
+      Bit#(64) oval1 = recfn_to_fn(rval1);
+      $display("%h %h %h %h %h\n", fval, rfval,cvt.out(),ocvt.out(),cvt2.out());
+      $display("%h %h %h %h %h %h\n", fval, oval, rfval,rval,oval1,rval1);
+      /* $display("%h %h",rval,oval); */
+      if(rg_count < 6)
+        rg_count <= rg_count + 1;
+      else
+        rg_done <= True;
+    endrule
+    rule rl_end(rg_done);
+      $finish;
+    endrule
+  endmodule
+
+  interface Ifc_testbench;
+    interface Put#(Input) put_req;
+    interface Get#(Output) get_res;
+  endinterface
+
+  (*synthesize*)
+  module mktestbench(Ifc_testbench);
+    FIFOF#(Input)  ff_in   <- mkSizedFIFOF(4);
+    FIFOF#(Output) ff_out  <- mkSizedFIFOF(4);
+    
+    Vector#(3,Ifc_fNToRecFN#(`expwidth,`sigwidth))  in_cvt  <- replicateM(mk_fNToRecFN());
+    Ifc_recFNToFN#(`expwidth,`sigwidth)             out_cvt <- mk_recFNToFN();
+
+    ModConfig cfg[4] = {
+      ModConfig{name: Pre,in: 1, out: 2},
+      ModConfig{name: Mac, in: 0, out: 2},
+      ModConfig{name: Post, in: 0, out: 2},
+      ModConfig{name: Round, in: 0, out: 2}
+    };
+    Ifc_fma#(`expwidth,`sigwidth) fma <- mkfma(arrayToVector(cfg));
+
+    rule rl_drive_inputs(fma.mv_ready() && ff_in.notEmpty());
+      let lv_in = ff_in.first;
+      `logLevel(testbench,1,$format("Inputs: ",fshow(lv_in)))
+      in_cvt[0].request(lv_in.a);
+      in_cvt[1].request(lv_in.b);
+      in_cvt[2].request(lv_in.c);
+      fma.ma_inputs(tuple5(0,in_cvt[0].out(),in_cvt[1].out(),in_cvt[2].out(),lv_in.rm));
+      ff_in.deq();
+    endrule
+
+    rule rl_drain_output(fma.mv_output_valid && ff_out.notFull());
+      let out <- fma.mv_output();
+      out_cvt.request(tpl_1(out));
+      let temp = Output{result: out_cvt.out(), flags: tpl_2(out)};
+      `logLevel(testbench,1,$format("Outputs: ",fshow(temp)))
+      ff_out.enq(temp);
+    endrule
+
+    interface put_req = toPut(ff_in);
+    interface get_res = toGet(ff_out);
+
+  endmodule: mktestbench
+
+  typedef struct{
+    Bit#(1) is_signed;
+    Bit#(`xlen) inp;
+    Bit#(3) rm;
+  } Input_cvt deriving (Bits,Eq,FShow);
+
+  interface Ifc_test_cvt;
+    interface Put#(Input_cvt) put_req;
+  endinterface
+
+  (*synthesize*)
+  module mktest_cvt(Ifc_test_cvt);
+    Ifc_iNToRecFN#(`expwidth,`sigwidth,`xlen) hf_cvt <- mk_iNToRecFN;
+    Ifc_recFNToIN#(`expwidth,`sigwidth,`xlen) hf_rcvt <- mk_recFNToIN;
+    Config cfg;
+    case (tuple3(`expwidth,`sigwidth,`xlen)) matches
+      {8,24,32}: 
+          cfg = RV32F;
+      {8,24,64}:
+          cfg = RV64F;
+      {11,53,32}:
+          cfg = RV32D;
+      {11,53,64}:
+          cfg = RV64D;
+    endcase
+    FIFOF#(Input_cvt) ff_in <- mkSizedFIFOF(3);
+    rule rl_drive_input;
+      let lv_in = ff_in.first;
+      hf_cvt.request(1,lv_in.is_signed,lv_in.inp,lv_in.rm);
+      hf_rcvt.request(1,hf_cvt.out(),lv_in.rm,lv_in.is_signed);
+      `logLevel(testbench,1,$format("IN: ",fshow(lv_in)," ",fshow(cfg)))
+      if (cfg == RV64F || cfg == RV32F) begin
+        Tuple2#(Recfmt#(11,53),Bit#(5)) out <- in_to_recfn(lv_in.is_signed,lv_in.inp,unpack(lv_in.rm),cfg);
+        `logLevel(testbench,1,$format("FN_D: ",fshow(out)))
+        Recfmt#(11,53) temp_val = tpl_1(out);
+        Tuple2#(Bit#(`xlen),Bit#(3)) tout <- recfn_to_in(temp_val,lv_in.rm,cfg,lv_in.is_signed);
+        `logLevel(testbench,1,$format("FN_RD: ",fshow(tout)))
+      end
+      Tuple2#(Recfmt#(`expwidth,`sigwidth),Bit#(5)) lv_out <- in_to_recfn(
+                                                            lv_in.is_signed,
+                                                            lv_in.inp,
+                                                            unpack(lv_in.rm),
+                                                            cfg);
+      Recfmt#(`expwidth,`sigwidth) rcvt_in = tpl_1(lv_out);
+      Tuple2#(Bit#(`xlen),Bit#(3)) lv_tout <- recfn_to_in(rcvt_in,lv_in.rm,cfg,lv_in.is_signed);
+      `logLevel(testbench,1,$format("FN_C: ",fshow(lv_out)))
+      `logLevel(testbench,1,$format("HF_C: ",fshow(hf_cvt.out())," ",fshow(hf_cvt.exceptionFlags())))
+      `logLevel(testbench,1,$format("FN_R: ",fshow(lv_tout)))
+      `logLevel(testbench,1,$format("HF_R: ",fshow(hf_rcvt.out())," ",
+                                          fshow(hf_rcvt.intExceptionFlags())))
+      ff_in.deq;
+    endrule
+    interface put_req = toPut(ff_in);
+  endmodule
+
+
+endpackage

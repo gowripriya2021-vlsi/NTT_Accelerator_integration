@@ -1,0 +1,110 @@
+chipease: >=1.0.0
+
+provider : gitlab
+vendor   : incoresemi
+library  : blocks/devices
+name     : uart
+version  : 1.0.0
+
+type: memory_mapped
+
+filesets:
+  design:
+    - uart.bsv
+    - uart_defines.bsv
+    - RS232_modified.bsv
+  sim:
+    - none
+
+description: A simple Rx/Tx based uart module
+
+# can be axi4, axi4lite or apb
+bus_protocol: apb
+
+register_map:
+  offset            : 0x1300
+  reserved_space    : 0x1F
+  minimum_bus_size  : 16
+  registers:
+    - baud_register:
+        offset: 0x0
+        size  : 16
+        description   : register to control the baud-value of the UART.
+        access_type   : read-write
+        reset_value   : module::init_baud
+        reset_mask    : 0xFFFF
+    - tx_data:
+        offset: h8
+        size: 8
+        description   : register to hold data that needs to be sent over UART
+        access_type   : write-only
+        reset_value   : ?
+        reset_mask    : 0
+    - rx_data:
+        offset: h10
+        size: 8
+        description   : register to hold data that is received over the UART
+        access_type   : read-only
+        reset_value   : ?
+        reset_mask    : 0
+    - status:
+        offset: h18
+        size  : 4
+        description   : holds various status fields
+        access_type   : read-only
+        subfields:
+          - tx_done : 
+              bitoffset     : 0
+              size: 1
+              description   : indicates if the transmission has been done
+              access_type   : read-only
+              reset_value   : 0
+              reset_mask    : 1
+          - tx_notfull : 
+              bitoffset     : 1
+              size: 1
+              description   : indicates if the transmission fifo is not full
+              access_type   : read-only
+              reset_value   : 0
+              reset_mask    : 1
+          - rx_notfull : 
+              bitoffset     : 2
+              size: 1
+              description   : indicates if the receiver fifo is not full
+              access_type   : read-only
+              reset_value   : 0
+              reset_mask    : 1
+          - rx_notempty : 
+              bitoffset     : 3
+              size: 1
+              description   : indicates if the receiver fifo is not empty
+              access_type   : read-only
+              reset_value   : 0
+              reset_mask    : 1
+
+parameters:
+  module :
+    - init_baud:
+        description: an integer indicating the baud_addr value at reset time. Limited to 16 bits.
+        value: 5
+    - fifo_depth:
+        value: integer
+        description: an integer indicating the depth of the RX and TX fifos
+  interface :
+    - none
+
+memory_map:
+  - none
+
+interface_signals:
+  - sin:
+      direction   : input
+      size        : 1
+      description : TX port of the UART
+  - sout: 
+      direction   : output
+      size        : 1
+      description : RX port of the UART
+
+drivers:
+  - uart_driver.c

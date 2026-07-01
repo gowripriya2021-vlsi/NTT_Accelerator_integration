@@ -1,0 +1,15 @@
+build/
+common_bsv/
+bin/
+obj_dir/
+sim_main.h
+python-utils/
+test/*.txt
+stats*
+stats/*
+log
+test/sim_build/*
+test/dump.vcd
+test/results.xml
+*/__pycache__
+.python-version

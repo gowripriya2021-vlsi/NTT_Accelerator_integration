@@ -1,0 +1,70 @@
+
+debugrom.elf:     file format elf64-littleriscv
+
+
+Disassembly of section .text:
+
+0000000000000000 <entry>:
+   0:	00c0006f          	j	c <_entry>
+
+0000000000000004 <resume>:
+   4:	0600006f          	j	64 <_resume>
+
+0000000000000008 <exception>:
+   8:	0380006f          	j	40 <_exception>
+
+000000000000000c <_entry>:
+   c:	0ff0000f          	fence
+  10:	7b241073          	csrw	dscratch,s0
+
+0000000000000014 <entry_loop>:
+  14:	f1402473          	csrr	s0,mhartid
+  18:	10802023          	sw	s0,256(zero) # 100 <_resume+0x9c>
+  1c:	40044403          	lbu	s0,1024(s0)
+  20:	00147413          	andi	s0,s0,1
+  24:	02041463          	bnez	s0,4c <going>
+  28:	f1402473          	csrr	s0,mhartid
+  2c:	40044403          	lbu	s0,1024(s0)
+  30:	00247413          	andi	s0,s0,2
+  34:	02041863          	bnez	s0,64 <_resume>
+  38:	10500073          	wfi
+  3c:	fd9ff06f          	j	14 <entry_loop>
+
+0000000000000040 <_exception>:
+  40:	7b202473          	csrr	s0,dscratch
+  44:	10002623          	sw	zero,268(zero) # 10c <_resume+0xa8>
+  48:	00100073          	ebreak
+
+000000000000004c <going>:
+  4c:	f1402473          	csrr	s0,mhartid
+  50:	10802223          	sw	s0,260(zero) # 104 <_resume+0xa0>
+  54:	7b202473          	csrr	s0,dscratch
+  58:	0ff0000f          	fence
+  5c:	0000100f          	fence.i
+  60:	00000067          	jr	zero # 0 <entry>
+
+0000000000000064 <_resume>:
+  64:	f1402473          	csrr	s0,mhartid
+  68:	10802423          	sw	s0,264(zero) # 108 <_resume+0xa4>
+  6c:	7b202473          	csrr	s0,dscratch
+  70:	7b200073          	dret
+
+Disassembly of section .whereto:
+
+0000000000000000 <whereto>:
+   0:	00000013          	nop
+
+Disassembly of section .riscv.attributes:
+
+0000000000000000 <.riscv.attributes>:
+   0:	1941                	addi	s2,s2,-16
+   2:	0000                	unimp
+   4:	7200                	ld	s0,32(a2)
+   6:	7369                	lui	t1,0xffffa
+   8:	01007663          	bgeu	zero,a6,14 <.riscv.attributes+0x14>
+   c:	0000000f          	fence	unknown,unknown
+  10:	7205                	lui	tp,0xfffe1
+  12:	3676                	fld	fa2,376(sp)
+  14:	6934                	ld	a3,80(a0)
+  16:	7032                	0x7032
+  18:	0030                	addi	a2,sp,8

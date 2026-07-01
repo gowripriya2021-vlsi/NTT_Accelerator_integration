@@ -1,0 +1,180 @@
+/*
+ * ntt_test.c - NTT AXI4 peripheral test
+ *
+ * Rules:
+ * - 32-bit (sw/lw) accesses ONLY — 64-bit writes skip slots, 64-bit reads skip elements
+ * - No %f/%lf — bare-metal newlib has no float printf; use integer division
+ *
+ * Address map (base=0x00011400):
+ *   +0x000  CONTROL  [0]=START [1]=INVERSE [2]=BUSY [3]=DONE
+ *   +0x004  STATUS   op count (ro)
+ *   +0x00C  PARAMS   {ROOT[31:16], N[15:0]} (ro)
+ *   +0x400  DATA_IN  element i at base+0x400+4*i
+ *   +0xC00  DATA_OUT element i at base+0xC00+4*i
+ */
+#include <stdio.h>
+#include <stdint.h>
+
+#define NTT_BASE     0x00011400U
+#define NTT_CONTROL  (NTT_BASE + 0x000)
+#define NTT_STATUS   (NTT_BASE + 0x004)
+#define NTT_PARAMS   (NTT_BASE + 0x00C)
+#define NTT_DATA_IN  (NTT_BASE + 0x400)
+#define NTT_DATA_OUT (NTT_BASE + 0xC00)
+
+#define CTRL_START   (1u << 0)
+#define CTRL_INVERSE (1u << 1)
+#define CTRL_BUSY    (1u << 2)
+#define CTRL_DONE    (1u << 3)
+
+#define NTT_N    256u
+#define NTT_Q    3329u
+
+/* 32-bit only accessors */
+static inline void     wr32(uint32_t a, uint32_t v) { *(volatile uint32_t*)(uintptr_t)a = v; }
+static inline uint32_t rd32(uint32_t a)             { return *(volatile uint32_t*)(uintptr_t)a; }
+
+static inline uint64_t rdcycle(void)   { uint64_t v; asm volatile("rdcycle %0":"=r"(v)); return v; }
+static inline uint64_t rdinstret(void) { uint64_t v; asm volatile("rdinstret %0":"=r"(v)); return v; }
+
+/* Integer-only "X.YY" printer — no %f needed */
+static void pf(uint64_t n, uint64_t d) {
+    if (!d) { printf("0.00"); return; }
+    printf("%llu.%02llu", (unsigned long long)(n/d), (unsigned long long)((n*100/d)%100));
+}
+
+/* Write 256 elements to DATA_IN using 32-bit stores */
+static uint64_t ntt_write(const uint32_t *src, uint64_t *ins_out) {
+    uint32_t i;
+    uint64_t c0 = rdcycle(), i0 = rdinstret();
+    for (i = 0; i < NTT_N; i++)
+        wr32(NTT_DATA_IN + i*4, src[i] & 0xFFFFu);
+    asm volatile("fence w,w":::"memory");
+    *ins_out = rdinstret() - i0;
+    return rdcycle() - c0;
+}
+
+/* Read 256 elements from DATA_OUT using 32-bit loads */
+static uint64_t ntt_read(uint32_t *dst, uint64_t *ins_out) {
+    uint32_t i;
+    asm volatile("fence r,r":::"memory");
+    uint64_t c0 = rdcycle(), i0 = rdinstret();
+    for (i = 0; i < NTT_N; i++)
+        dst[i] = rd32(NTT_DATA_OUT + i*4) & 0xFFFFu;
+    *ins_out = rdinstret() - i0;
+    return rdcycle() - c0;
+}
+
+/* Start NTT and poll DONE, return cycles */
+static uint64_t ntt_run(int inverse, uint64_t *ins_out) {
+    uint32_t ctrl = CTRL_START | (inverse ? CTRL_INVERSE : 0u);
+    uint64_t c0 = rdcycle(), i0 = rdinstret();
+    wr32(NTT_CONTROL, ctrl);
+    while (!(rd32(NTT_CONTROL) & CTRL_DONE))
+        asm volatile("fence r,r":::"memory");
+    *ins_out = rdinstret() - i0;
+    return rdcycle() - c0;
+}
+
+static uint32_t in_buf[NTT_N];
+static uint32_t out_buf[NTT_N];
+static uint32_t ref_buf[NTT_N];
+
+int main(void) {
+    uint32_t i;
+    uint64_t wc, wi, rc, ri, nc, ni, ic, ii;
+
+    /* Read HW config */
+    uint32_t params  = rd32(NTT_PARAMS);
+    uint32_t hw_n    = params & 0xFFFFu;
+    uint32_t hw_root = (params >> 16) & 0xFFFFu;
+    uint32_t op0     = rd32(NTT_STATUS);
+
+    printf("\n=================================\n");
+    printf("AXI4 NTT Performance Test\n");
+    printf("=================================\n\n");
+    printf("NTT base=0x%x  N=%u  ROOT=%u  Q=%u  ops=%u\n\n",
+           NTT_BASE, hw_n, hw_root, NTT_Q, op0);
+
+    /* ---- Test 1: impulse -> forward NTT -> all ones ---- */
+    printf("--- Test 1: Impulse -> Forward NTT ---\n");
+    in_buf[0] = 1;
+    for (i = 1; i < NTT_N; i++) in_buf[i] = 0;
+
+    wc = ntt_write(in_buf, &wi);
+    nc = ntt_run(0, &ni);
+    rc = ntt_read(out_buf, &ri);
+
+    printf("  Write 256x32b: cyc=%llu ins=%llu cpi=",
+           (unsigned long long)wc, (unsigned long long)wi);
+    pf(wc,wi); printf(" cyc/elem="); pf(wc,NTT_N); printf("\n");
+    printf("  Forward NTT:   cyc=%llu ins=%llu\n",
+           (unsigned long long)nc, (unsigned long long)ni);
+    printf("  Read  256x32b: cyc=%llu ins=%llu cpi=",
+           (unsigned long long)rc, (unsigned long long)ri);
+    pf(rc,ri); printf(" cyc/elem="); pf(rc,NTT_N); printf("\n");
+    printf("  NTT[0..7]:");
+    for (i=0;i<8;i++) printf(" %u", out_buf[i]);
+    printf("\n");
+    uint32_t fail1 = 0;
+    for (i=0; i<NTT_N; i++) if (out_buf[i] != 1) { fail1=1; break; }
+    printf("  Result: %s\n\n", fail1 ? "FAIL (expected all 1s)" : "PASS");
+
+    /* ---- Test 2: all-ones -> inverse NTT -> impulse ---- */
+    printf("--- Test 2: All-ones -> Inverse NTT ---\n");
+    wc = ntt_write(out_buf, &wi);  /* out_buf is all-ones (if test1 passed) */
+    ic = ntt_run(1, &ii);
+    rc = ntt_read(out_buf, &ri);
+
+    printf("  Write 256x32b: cyc=%llu\n", (unsigned long long)wc);
+    printf("  Inverse NTT:   cyc=%llu ins=%llu\n",
+           (unsigned long long)ic, (unsigned long long)ii);
+    printf("  Read  256x32b: cyc=%llu\n", (unsigned long long)rc);
+    printf("  INTT[0..7]:");
+    for (i=0;i<8;i++) printf(" %u", out_buf[i]);
+    printf("\n");
+    uint32_t fail2 = 0;
+    if (out_buf[0] != 1) fail2=1;
+    for (i=1; i<NTT_N; i++) if (out_buf[i] != 0) { fail2=1; break; }
+    printf("  Result: %s\n\n", fail2 ? "FAIL (expected impulse)" : "PASS");
+
+    /* ---- Test 3: ramp round-trip ---- */
+    printf("--- Test 3: Ramp Round-trip ---\n");
+    for (i=0; i<NTT_N; i++) ref_buf[i] = i % NTT_Q;
+    ntt_write(ref_buf, &wi);
+    ntt_run(0, &ni);
+    ntt_read(out_buf, &ri);          /* NTT output */
+    ntt_write(out_buf, &wi);
+    ntt_run(1, &ii);
+    ntt_read(out_buf, &ri);          /* INTT output = should match ref */
+
+    uint32_t fail3 = 0;
+    uint32_t errs  = 0;
+    for (i=0; i<NTT_N; i++) {
+        if (out_buf[i] != ref_buf[i]) {
+            if (errs < 4)
+                printf("  ERR[%u]: got=%u exp=%u\n", i, out_buf[i], ref_buf[i]);
+            fail3=1; errs++;
+        }
+    }
+    if (errs > 4) printf("  ...(%u errors total)\n", errs);
+    printf("  Result: %s\n\n", fail3 ? "FAIL" : "PASS");
+
+    /* ---- Summary ---- */
+    uint64_t total_c = wc + nc + rc + ic;
+    uint32_t op1 = rd32(NTT_STATUS);
+    printf("=================================\n");
+    printf("Performance Summary\n");
+    printf("=================================\n");
+    printf("  Write 256x32b : cyc="); pf(wc,1);
+    printf("  cyc/elem="); pf(wc,NTT_N); printf("\n");
+    printf("  Forward NTT   : cyc=%llu\n", (unsigned long long)nc);
+    printf("  Read  256x32b : cyc="); pf(rc,1);
+    printf("  cyc/elem="); pf(rc,NTT_N); printf("\n");
+    printf("  Inverse NTT   : cyc=%llu\n", (unsigned long long)ic);
+    printf("  Total         : cyc=%llu\n", (unsigned long long)total_c);
+    printf("  HW ops        : %u -> %u (delta=%u)\n", op0, op1, op1-op0);
+    printf("=================================\n");
+    printf("%s\n", (!fail1 && !fail2 && !fail3) ? "ALL PASS" : "SOME FAIL");
+    return (fail1||fail2||fail3) ? 1 : 0;
+}

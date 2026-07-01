@@ -1,0 +1,15 @@
+// allotted space: 12 bytes
+// space-allocation: (R: reserved, U-Used)
+// 0x0: U U R R
+// 0x4: U R R R
+// 0x8: U R R R
+
+// Parameters
+`define PWMWIDTH 16
+
+// Memory Map
+`define Pwm_clock			'h00
+`define Pwm_control			'h04
+`define Pwm_period			'h08
+`define Pwm_duty_cycle		'h0C
+`define Pwm_deadband_delay	'h10

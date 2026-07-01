@@ -1,0 +1,256 @@
+#include <stdio.h>
+#include <stdint.h>
+
+// ============================================================
+// NTT AXI4 Peripheral Registers
+// BASE + 0x000  CONTROL  [0]=START [1]=INVERSE [2]=BUSY [3]=DONE
+// BASE + 0x004  STATUS   (op count)
+// BASE + 0x008  PARAMS   {ROOT[15:0], N[15:0]}
+// BASE + 0x400  DATA_IN  element i at BASE+0x400+4*i
+// BASE + 0xC00  DATA_OUT element i at BASE+0xC00+4*i
+// ============================================================
+#define NTT_BASE        0x00011400U
+#define NTT_CONTROL     (NTT_BASE + 0x000)
+#define NTT_STATUS      (NTT_BASE + 0x004)
+#define NTT_PARAMS      (NTT_BASE + 0x00C)
+#define NTT_DATA_IN(i)  (NTT_BASE + 0x400 + (i)*4)
+#define NTT_DATA_OUT(i) (NTT_BASE + 0xC00 + (i)*4)
+
+#define NTT_CTRL_START   (1u << 0)
+#define NTT_CTRL_INVERSE (1u << 1)
+#define NTT_CTRL_BUSY    (1u << 2)
+#define NTT_CTRL_DONE    (1u << 3)
+
+#define NTT_N    256
+#define NTT_Q    3329
+#define NTT_ROOT 17
+
+// ============================================================
+// Cycle / instruction counters
+// ============================================================
+static inline uint64_t read_cycles(void) {
+    uint64_t c;
+    asm volatile ("rdcycle %0" : "=r"(c));
+    return c;
+}
+static inline uint64_t read_instret(void) {
+    uint64_t i;
+    asm volatile ("rdinstret %0" : "=r"(i));
+    return i;
+}
+
+// ============================================================
+// AXI4 register accessors
+// ============================================================
+static inline void axi_write32(uint32_t addr, uint32_t data) {
+    volatile uint32_t *p = (volatile uint32_t *)(uintptr_t)addr;
+    *p = data;
+}
+static inline uint32_t axi_read32(uint32_t addr) {
+    volatile uint32_t *p = (volatile uint32_t *)(uintptr_t)addr;
+    return *p;
+}
+
+// ============================================================
+// NTT helpers
+// ============================================================
+static inline void axi_write64(uint32_t addr, uint64_t data) {
+    volatile uint64_t *p = (volatile uint64_t *)(uintptr_t)addr;
+    *p = data;
+}
+static inline void ntt_load(const uint32_t *v) {
+    // Use 64-bit writes: pack two 16-bit elements per 8-byte AXI beat.
+    // This avoids the addr[2]=1 lane issue where 32-bit writes to +4
+    // offsets land in wdata[63:32] which the BSV truncate() discards.
+    for (int i = 0; i < NTT_N; i += 2) {
+        uint64_t lo = (uint64_t)(v[i]   & 0xFFFFu);
+        uint64_t hi = (uint64_t)(v[i+1] & 0xFFFFu);
+        axi_write64(NTT_DATA_IN(i), lo | (hi << 32));
+    }
+    __asm__ volatile ("fence w,w" ::: "memory");
+}
+
+static inline uint64_t axi_read64(uint32_t addr) {
+    volatile uint64_t *p = (volatile uint64_t *)(uintptr_t)addr;
+    return *p;
+}
+static inline void ntt_store(uint32_t *v) {
+    // Use 64-bit reads: both lanes valid, extract each 16-bit element.
+    for (int i = 0; i < NTT_N; i += 2) {
+        uint64_t d = axi_read64(NTT_DATA_OUT(i));
+        v[i]   = (uint32_t)(d & 0xFFFFu);
+        v[i+1] = (uint32_t)((d >> 32) & 0xFFFFu);
+    }
+}
+
+static inline void ntt_start(int inverse) {
+    uint32_t ctrl = NTT_CTRL_START | (inverse ? NTT_CTRL_INVERSE : 0u);
+    axi_write32(NTT_CONTROL, ctrl);
+    while (!(axi_read32(NTT_CONTROL) & NTT_CTRL_DONE))
+        ;
+}
+
+typedef struct { uint64_t cycles; uint64_t instrs; } perf_t;
+
+static perf_t timed_ntt(int inverse) {
+    perf_t p;
+    uint64_t c0 = read_cycles(), i0 = read_instret();
+    ntt_start(inverse);
+    p.cycles = read_cycles()  - c0;
+    p.instrs = read_instret() - i0;
+    return p;
+}
+
+// ============================================================
+// main
+// ============================================================
+int main(void) {
+    printf("\n=================================\n");
+    printf("AXI4 NTT Performance Test\n");
+    printf("=================================\n\n");
+
+    printf("NTT base: 0x%08x\n", NTT_BASE);
+
+    uint32_t params  = axi_read32(NTT_PARAMS);
+    uint32_t hw_n    = params & 0xFFFFu;
+    uint32_t hw_root = (params >> 16) & 0xFFFFu;
+    printf("HW params: N=%u  ROOT=%u  (Q=%u)\n\n", hw_n, hw_root, NTT_Q);
+
+    static uint32_t in_buf[NTT_N];
+    static uint32_t tmp[NTT_N];
+
+    uint64_t cycles_load, instrs_load;
+    uint64_t cycles_read, instrs_read;
+    perf_t   perf_ntt, perf_intt;
+
+    // ----------------------------------------------------------
+    // Test 1: measure load time
+    // ----------------------------------------------------------
+    printf("Measuring load time (256 elements)...\n");
+    for (int i = 0; i < NTT_N; i++)
+        in_buf[i] = (i == 0) ? 1 : 0;
+
+    uint64_t c0 = read_cycles(), i0 = read_instret();
+    ntt_load(in_buf);
+    cycles_load = read_cycles()  - c0;
+    instrs_load = read_instret() - i0;
+    printf("  Cycles: %llu (~%.1f/elem)\n",
+           (unsigned long long)cycles_load, (double)cycles_load / NTT_N);
+    printf("  Instrs: %llu (~%.1f/elem)\n",
+           (unsigned long long)instrs_load, (double)instrs_load / NTT_N);
+    printf("  CPI:    %.2f\n\n",
+           (double)cycles_load / instrs_load);
+
+    // ----------------------------------------------------------
+    // Test 2: forward NTT of impulse
+    // ----------------------------------------------------------
+    printf("Measuring forward NTT (impulse)...\n");
+    perf_ntt = timed_ntt(0);
+    printf("  Cycles: %llu\n", (unsigned long long)perf_ntt.cycles);
+    printf("  Instrs: %llu\n", (unsigned long long)perf_ntt.instrs);
+    printf("  CPI:    %.2f\n", (double)perf_ntt.cycles / perf_ntt.instrs);
+    { uint64_t d01=axi_read64(NTT_DATA_OUT(0)), d23=axi_read64(NTT_DATA_OUT(2));
+      printf("  NTT[0..3]: %u %u %u %u\n\n",
+             (uint32_t)(d01&0xFFFF),(uint32_t)((d01>>32)&0xFFFF),
+             (uint32_t)(d23&0xFFFF),(uint32_t)((d23>>32)&0xFFFF)); }
+
+    // ----------------------------------------------------------
+    // Test 3: measure readback time
+    // ----------------------------------------------------------
+    printf("Measuring readback time (256 elements)...\n");
+    c0 = read_cycles(); i0 = read_instret();
+    ntt_store(tmp);
+    cycles_read = read_cycles()  - c0;
+    instrs_read = read_instret() - i0;
+    printf("  Cycles: %llu (~%.1f/elem)\n",
+           (unsigned long long)cycles_read, (double)cycles_read / NTT_N);
+    printf("  Instrs: %llu (~%.1f/elem)\n",
+           (unsigned long long)instrs_read, (double)instrs_read / NTT_N);
+    printf("  CPI:    %.2f\n\n",
+           (double)cycles_read / instrs_read);
+
+    // ----------------------------------------------------------
+    // Test 4: inverse NTT (should recover impulse)
+    // ----------------------------------------------------------
+    printf("Measuring inverse NTT...\n");
+    ntt_load(tmp);
+    perf_intt = timed_ntt(1);
+    printf("  Cycles: %llu\n", (unsigned long long)perf_intt.cycles);
+    printf("  Instrs: %llu\n", (unsigned long long)perf_intt.instrs);
+    printf("  CPI:    %.2f\n", (double)perf_intt.cycles / perf_intt.instrs);
+    { uint64_t d01=axi_read64(NTT_DATA_OUT(0)), d23=axi_read64(NTT_DATA_OUT(2));
+      printf("  INTT[0..3]: %u %u %u %u\n\n",
+             (uint32_t)(d01&0xFFFF),(uint32_t)((d01>>32)&0xFFFF),
+             (uint32_t)(d23&0xFFFF),(uint32_t)((d23>>32)&0xFFFF)); }
+
+    // ----------------------------------------------------------
+    // Test 5: linear ramp
+    // ----------------------------------------------------------
+    printf("Measuring NTT with linear ramp input...\n");
+    for (int i = 0; i < NTT_N; i++)
+        in_buf[i] = i % NTT_Q;
+    ntt_load(in_buf);
+    perf_ntt = timed_ntt(0);
+    printf("  NTT Cycles: %llu  Instrs: %llu  CPI: %.2f\n",
+           (unsigned long long)perf_ntt.cycles,
+           (unsigned long long)perf_ntt.instrs,
+           (double)perf_ntt.cycles / perf_ntt.instrs);
+
+    ntt_store(tmp);
+    ntt_load(tmp);
+    perf_intt = timed_ntt(1);
+    printf("  INTT Cycles: %llu  Instrs: %llu  CPI: %.2f\n\n",
+           (unsigned long long)perf_intt.cycles,
+           (unsigned long long)perf_intt.instrs,
+           (double)perf_intt.cycles / perf_intt.instrs);
+
+    // ----------------------------------------------------------
+    // Summary
+    // ----------------------------------------------------------
+    uint64_t total_c = cycles_load + perf_ntt.cycles + cycles_read + perf_intt.cycles;
+    uint64_t total_i = instrs_load + perf_ntt.instrs + instrs_read + perf_intt.instrs;
+
+    printf("=================================\n");
+    printf("Performance Summary\n");
+    printf("=================================\n");
+    printf("                      Cycles  Instrs    CPI\n");
+    printf("Load 256 elements:    %6llu  %6llu   %.2f\n",
+           (unsigned long long)cycles_load,
+           (unsigned long long)instrs_load,
+           (double)cycles_load / instrs_load);
+    printf("Read 256 elements:    %6llu  %6llu   %.2f\n",
+           (unsigned long long)cycles_read,
+           (unsigned long long)instrs_read,
+           (double)cycles_read / instrs_read);
+    printf("Forward NTT:          %6llu  %6llu   %.2f\n",
+           (unsigned long long)perf_ntt.cycles,
+           (unsigned long long)perf_ntt.instrs,
+           (double)perf_ntt.cycles / perf_ntt.instrs);
+    printf("Inverse NTT:          %6llu  %6llu   %.2f\n",
+           (unsigned long long)perf_intt.cycles,
+           (unsigned long long)perf_intt.instrs,
+           (double)perf_intt.cycles / perf_intt.instrs);
+    printf("Full round-trip:      %6llu  %6llu   %.2f\n",
+           (unsigned long long)total_c,
+           (unsigned long long)total_i,
+           (double)total_c / total_i);
+    printf("=================================\n\n");
+
+    // ----------------------------------------------------------
+    // Correctness: INTT(NTT(ramp)) should recover ramp
+    // ----------------------------------------------------------
+    printf("Correctness check (NTT -> INTT of ramp)...\n");
+    ntt_store(tmp);
+    int pass = 1;
+    for (int i = 0; i < NTT_N; i++) {
+        uint32_t expected = i % NTT_Q;
+        if (tmp[i] != expected) {
+            printf("ERROR at [%d]: got %u expected %u\n", i, tmp[i], expected);
+            pass = 0;
+            if (i >= 4) { printf("(further errors suppressed)\n"); break; }
+        }
+    }
+    printf("Correctness: %s\n\n", pass ? "PASS" : "FAIL");
+
+    return 0;
+}

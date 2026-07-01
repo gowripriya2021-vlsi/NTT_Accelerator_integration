@@ -1,0 +1,52 @@
+import cocotb
+from cocotb.triggers import Timer, RisingEdge, ReadOnly
+from cocotb_coverage.coverage import *
+from collections import deque
+import logging
+from logging.handlers import RotatingFileHandler
+import random
+from bsvstruct_class import *
+from modules import *
+
+log = cocotb.logging.getLogger("cocotb")
+
+@cocotb.test()
+def test_fma(dut):
+    tb = Tb(dut,0,300000)
+    cocotb.fork(tb.instance.verify_responses())
+    yield tb.reset()
+
+    with open("./fma64.txt","r") as fdesc:
+        i = 0
+        while i<10:
+            line = (fdesc.readline().strip()).split(" ")
+            # print(line)
+            i += 1
+            # inp = Input(int(line[0]+line[1]+line[2],16)<<3+4)
+            inp = Input()
+            inp.a = int(line[0],16)
+            inp.b = int(line[1],16)
+            inp.c = int(line[2],16)
+            inp.rm = 4
+            yield tb.instance.send_request(inp,line[3:])
+
+            # print(inp)
+    yield Timer(1000*3000)
+    tb.run_sim = False
+
+@cocotb.test()
+def test_cvt(dut):
+    tb = Tb(dut,1,300000)
+    yield tb.reset()
+
+    with open("./cvtui64d.txt","r") as fdesc:
+        i = 0
+        while i<20:
+            line = (fdesc.readline().strip()).split(" ")
+            i += 1
+            inp = Input_cvt()
+            inp.is_signed = 0
+            inp.inp = int(line[0],16)
+            inp.rm = 3
+            yield tb.instance.send_request(inp)
+    tb.end_sim()

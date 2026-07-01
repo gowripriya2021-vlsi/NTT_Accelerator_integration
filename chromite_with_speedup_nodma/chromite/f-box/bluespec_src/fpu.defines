@@ -1,0 +1,46 @@
+`define FMADD           'b0000
+`define FMSUB           'b0001
+`define FNMSUB          'b0010
+`define FNMADD          'b0011
+`define FSTORE          'b1001
+`define FADD_f5         'b00000
+`define FSUB_f5         'b00001
+`define FMUL_f5         'b00010
+`define FDIV_f5         'b00011
+`define FSQRT_f5        'b01011
+`define FP_OPCODE       'b0100
+`define FCMP_f5         'b10100
+`define FMMAX_f5        'b00101
+`define FCVT_F_I_f5     'b11010
+`define FCVT_I_F_f5     'b11000
+`define FSGNJN_f5       'b00100
+`define FCLASS_f5       'b11100
+`define FMV_X_D_f7      'b1110001
+`define FMV_D_X_f7      'b1111001
+`define fma_stages 3
+`define ftoi_stages 2
+`define itof_stages 2
+`define ftof_stages 2
+
+`define FCVT_F2I_f7     6'b110000
+`define FCVT_I2F_f7     6'b110100
+`define FADDS_f7        6'b000000
+`define FSUBS_f7        6'b000010
+`define FMULS_f7        6'b000100
+`define FSGNJN_f7       6'b001000
+`define FCLASS_f7       6'b111000
+`define FCMP_f7         6'b101000
+`define FMAX_f7         6'b001010
+`define FDIV_f7         6'b000110
+`define FSQRT_f7        6'b010110
+`define FMV_X_S_f7      6'b111000
+`define FMV_S_X_f7      6'b111100
+`define FCVT_S_D_f7     6'b010000
+
+`define SP_EXP_ONES     7'b1111111
+`define SP_SIG_ZERO     23'h0
+`define DP_EXP_ONES     10'b1111111111
+`define DP_SIG_ZERO     52'h0
+
+//-- configs to go away soon
+

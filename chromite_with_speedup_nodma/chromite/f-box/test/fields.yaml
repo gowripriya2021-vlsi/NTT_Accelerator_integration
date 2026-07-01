@@ -1,0 +1,60 @@
+# This file contains the different field values for each instruction.
+fmadd:
+  opcode: 0x0
+  f7: 0
+  wait: fma
+  tfloat: f{flen}_mulAdd
+fmsub:
+  opcode: 0x1
+  f7: 0
+  wait: fma
+  tfloat: f{flen}_mulAdd
+fnmsub:
+  opcode: 0x2
+  f7: 0
+  wait: fma
+  tfloat: f{flen}_mulAdd
+fnmadd:
+  opcode: 0x3
+  f7: 0
+  wait: fma
+  tfloat: f{flen}_mulAdd
+fadd:
+  opcode: 4
+  f7: 0
+  wait: fma
+  tfloat: f{flen}_add
+fsub:
+  opcode: 4
+  f7: 4
+  wait: fma
+  tfloat: f{flen}_sub
+fmul:
+  opcode: 4
+  f7: 8
+  wait: fma
+  tfloat: f{flen}_mul
+fdivs:
+  cond: flen == 32
+  wait: divsqrt
+  opcode: 4
+  f7: 0xc
+  tfloat: f{flen}_div
+fdivd:
+  cond: flen == 64
+  wait: divsqrt
+  opcode: 4
+  f7: 0xd
+  tfloat: f{flen}_div
+fsqrts:
+  cond: flen == 32
+  wait: divsqrt
+  opcode: 4
+  f7: 0x2c
+  tfloat: f{flen}_sqrt
+fsqrtd:
+  cond: flen == 64
+  wait: divsqrt
+  opcode: 4
+  f7: 0x2d
+  tfloat: f{flen}_sqrt

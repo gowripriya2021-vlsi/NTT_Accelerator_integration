@@ -1,0 +1,9 @@
+build
+bin
+logs
+obj_dir
+common_bsv
+sim_main.h
+axi2apb_bridge.bsv
+axil2apb_bridge.bsv
+axi2axil_bridge.bsv

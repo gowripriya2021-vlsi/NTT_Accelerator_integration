@@ -1,0 +1,89 @@
+#ifdef macro variables
+RISCV_ENABLE_DIRTY = False
+def rg(value, i):
+  return (value *(2**i))
+MSTATUS = rg(1,39) | rg(1,38) | rg(1,19) | rg(1,18) | rg(1,17)
+
+RISCV_XLATE_VIRT      = (1 << 0)
+RISCV_XLATE_VIRT_HLVX = (1 << 1)
+
+MSTATUS_MXR  = 0x00080000
+MSTATUS_MPRV = 0x00020000
+MSTATUS_SUM  = 0x00040000
+MSTATUS_MPP  = 0x00001800
+MSTATUS_MPV  = 0x0000008000000000
+
+PRV_U = 0
+PRV_S = 1
+PRV_M = 3
+
+PRV_HS = (PRV_S + 1)
+
+SATP32_MODE   = 0x80000000
+SATP32_ASID   = 0x7FC00000
+SATP32_PPN    = 0x003FFFFF
+SATP64_MODE   = 0xF000000000000000
+SATP64_ASID   = 0x0FFFF00000000000
+SATP64_PPN    = 0x00000FFFFFFFFFFF
+
+SATP_MODE_OFF  = 0
+SATP_MODE_SV32 = 1
+SATP_MODE_SV39 = 8
+SATP_MODE_SV48 = 9
+SATP_MODE_SV57 = 10
+SATP_MODE_SV64 = 11
+
+HSTATUS_VSXL   = 0x300000000
+HSTATUS_VTSR   = 0x00400000
+HSTATUS_VTW    = 0x00200000
+HSTATUS_VTVM   = 0x00100000
+HSTATUS_VGEIN  = 0x0003f000
+HSTATUS_HU     = 0x00000200
+HSTATUS_SPVP   = 0x00000100
+HSTATUS_SPV    = 0x00000080
+HSTATUS_GVA    = 0x00000040
+HSTATUS_VSBE   = 0x00000020
+
+HGATP32_MODE  = 0x80000000
+HGATP32_VMID  = 0x1FC00000
+HGATP32_PPN   = 0x003FFFFF
+
+HGATP64_MODE  = 0xF000000000000000
+HGATP64_VMID  = 0x03FFF00000000000
+HGATP64_PPN   = 0x00000FFFFFFFFFFF
+
+HGATP_MODE_OFF    = 0
+HGATP_MODE_SV32X4 = 1
+HGATP_MODE_SV39X4 = 8
+HGATP_MODE_SV48X4 = 9
+
+PGSHIFT   = 12
+PMP_SHIFT = 2
+
+#page table entry (PTE) fields */
+PTE_V     = 0x001 # Valid */
+PTE_R     = 0x002 # Read */
+PTE_W     = 0x004 # Write */
+PTE_X     = 0x008 # Execute */
+PTE_U     = 0x010 # User */
+PTE_G     = 0x020 # Global */
+PTE_A     = 0x040 # Accessed */
+PTE_D     = 0x080 # Dirty */
+PTE_SOFT  = 0x300 # Reserved for Software */
+PTE_RSVD  = 0x1FC0000000000000 # Reserved for future standard use */
+PTE_PBMT  = 0x6000000000000000 # Svpbmt: Page-based memory types */
+PTE_N     = 0x8000000000000000 # Svnapot: NAPOT translation contiguity */
+PTE_ATTR  = 0xFFC0000000000000 # All attributes and reserved bits */
+
+PTE_PPN_SHIFT = 10
+
+PGSIZE = (1 << PGSHIFT)
+PGMASK = ~(PGSIZE-1);
+
+def PTE_TABLE(PTE):
+  return (((PTE) & (PTE_V | PTE_R | PTE_W | PTE_X)) == PTE_V)
+
+def get_field(reg, mask):
+  return (((reg) & (mask)) / ((mask) & ~((mask) << 1)))
+
+# print(hex(get_field(0xA000000000000000, SATP64_MODE)))

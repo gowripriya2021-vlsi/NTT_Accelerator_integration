@@ -1,0 +1,97 @@
+chipease: >=1.0.0
+
+provider : gitlab
+vendor   : incoresemi
+library  : blocks/devices
+name     : prot_ocm
+version  : 1.0.0
+
+type: memory_mapped
+
+filesets:
+  design:
+    - prot_ocm.bsv
+    - ram1rw_user.bsv
+    - brambe_1rw.bsv
+  sim:
+    - none
+  associated_rtl:
+    - verilog/brambe_1rw_nc.v
+    - verilog/brambe_1rw_rf.v
+    - verilog/brambe_1rw_wf.v
+
+description: A Single ported RAM module, that works as "Protected" On Chip Memory.
+This Module contains
+1. AXI4L / APB interfaced configuration Registers that stores:
+    a. 00h - Starting Address in OCM that should be locked
+    b. 08h - Ending Address in OCM that should be locked
+    c. 10h - Lock Status of Region between Starting and Ending Address in the above registers
+   All the above registers are Write only once. Reads will return slave error.
+2. AXI Interfaced RAM whose writes and reads restricted to 'Machine Mode' a.k.a Privileged Secure mode of AxPROT.
+
+# can be axi4lite or apb
+interface_bus: apb
+
+register_map:
+  offset            : 0x220
+  reserved_space    : 0x20
+
+  registers:
+    - text_start_address:
+        offset: 0x0
+        size  : module::width
+        description   : register to hold the starting address in OCM to lock.
+        access_type   : Write only
+        reset_value   : 0
+    - text_end_address:
+        offset: 0x8
+        size  : module::width
+        description   : register to hold the ending address in OCM to lock.
+        access_type   : Write only
+        reset_value   : 0
+    - lock_text:
+        offset: 0x10
+        size: 8
+        description   : register that locks the region between starting and ending address.
+        access_type   : Write-only
+        reset_value   : 0
+
+parameters:
+  - entries:
+      description: an integer indicating the number of the entries in the RAM structure
+      value: 5
+      place: interface
+  - width:
+      description: an integer indicating the length of each RAM entry
+      value: integer
+      place: interface
+  - banks:
+      description: an integer indicating the number of banks the RAM structure should be split into
+      value: integer
+      place: interface
+  - config_base:
+      description: an integer indicating the base address assigned to the Configuration registers in the SoC
+      value: integer
+      place: module
+  - base:
+      description: an integer indicating the base address assigned to the OCM in the SoC
+      value: integer
+      place: module
+  - filename:
+      description: a list of filenames which will contain the contents of the OCM-banks in hex format
+      value: list of strings
+      place: module
+  - mode:
+      description: a string indicating the mode of the ports. Can be one of : nc (no-change), wf (write-first) or rf (read-first)
+      value: string
+      place: module
+
+interface : axi4
+
+memory_map:
+  offset            : 0x10000000
+  reserved_space    : 0x2000
+
+interface_signals: none
+
+drivers: none

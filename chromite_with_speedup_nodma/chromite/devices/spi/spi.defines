@@ -1,0 +1,22 @@
+// Copyright (c) 2021 InCore Semiconductors Pvt. Ltd.
+// See LICENSE.incore for More details
+
+`define TXFIFO_DEPTH 20
+`define CR1     8'h00
+`define CR2     8'h04
+`define EN      8'h08
+`define SR      8'h0C
+`define TXR     8'h10
+`define RXR     8'h14
+`define RXCRCR  8'h18
+`define TXCRCR  8'h1C
+`define DLYR    8'h20
+`define CRCPR   8'h24
+
+`define PSCR_CLK_WIDTH          16 //Register width
+`define SPI_BASE_ADDR 'h20000
+`define PDATASIZE               32
+`define PADDR                   32
+`define SLAVES_SERVED           4
+`define TXFIFO_DEPTH            20
+

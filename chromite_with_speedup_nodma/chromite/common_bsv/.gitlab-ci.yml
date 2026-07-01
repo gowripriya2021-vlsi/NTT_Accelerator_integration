@@ -1,0 +1,68 @@
+# If you assign a task to the same stage, they'll run in parallel
+stages:
+    - prepare_release
+    - release
+
+
+# checks if the changelog has been updated and the version has also been upgraded
+check-mr-compliance:
+    stage: prepare_release
+    image: registry.gitlab.com/incoresemi/dockers/docker-bsc
+    rules:
+      - if: $CI_COMMIT_TAG
+        when: never                                             # Do not run this job when a tag is created manually
+      - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH             # Run this job when commits are pushed or merged to the default branch
+      - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+        when: always
+    script:
+        - export NEWVER=$(grep -P "^\[.*?\]" CHANGELOG.rst -m1 | awk '{print $1}' | sed 's/[][]//g');
+        - export CURVER=$(git describe --tags| cut -f1 -d"-")
+        - echo $NEWVER
+        - echo $CURVER        
+        - echo "TAG=$(grep -P "^\[.*?\]" CHANGELOG.rst -m1 | awk '{print $1}' | sed 's/[][]//g')" >> variables.env
+        - cat variables.env
+        - CURVER=${CURVER//./ }
+        - NEWVER=${NEWVER//./ }
+        - curpatch=$(echo $CURVER | awk '{print $3}')
+        - curminor=$(echo $CURVER | awk '{print $2}')
+        - curmajor=$(echo $CURVER | awk '{print $1}')
+        - newpatch=$(echo $NEWVER | awk '{print $3}')
+        - newminor=$(echo $NEWVER | awk '{print $2}')
+        - newmajor=$(echo $NEWVER | awk '{print $1}')
+        - if [ $newmajor = $curmajor ] && [ $newminor = $curminor ] && [ $newpatch -gt $curpatch ]; then echo "Patch Update Accepted OK"; exit 0; fi
+        - if [ $newmajor = $curmajor ] && [ $newminor = $curminor ] && [ $newpatch -le $curpatch ]; then echo "Revise Patch Atleast!"; exit 1; fi
+        - if [ $newmajor = $curmajor ] && [ $newminor -gt $curminor ] && [ $newpatch = 0 ]; then echo "Minor Update Accepted OK!"; exit 0; fi
+        - if [ $newmajor = $curmajor ] && [ $newminor -gt $curminor ] && [ $newpatch != 0 ]; then echo "For Minor changes the patches should be 0"; exit 1; fi
+        - if [ $newmajor = $curmajor ] && [ $newminor -lt $curminor ]; then echo "Minor version should greater than previuos"; exit 1; fi
+        - if [ $newmajor -gt $curmajor ] && [ $newminor = 0 ] && [ $newpatch = 0 ]; then echo "Major Updated Accepted OK"; exit 0; fi
+        - echo  "For Major updates Minor and Patches should be 0"
+        - exit 1
+    artifacts:
+      reports:
+        dotenv: variables.env                                   # Use artifacts:reports:dotenv to expose the variables to other jobs
+    tags:
+        - inc_mas_server1
+
+release_job:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  needs:
+    - job: check-mr-compliance
+      artifacts: true
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never                                  # Do not run this job when a tag is created manually
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH  # Run this job when commits are pushed or merged to the default branch
+  script:
+    - echo "running release_job for $TAG"
+    - CHANGELOG_START=`awk '/\[/{print NR+2; exit;}' CHANGELOG.rst`
+    - CHANGELOG_END=`awk '/\[/{ count++; if(count>1) {print NR-1; exit;}}' CHANGELOG.rst`
+    - EXTRA_DESCRIPTION=`awk 'NR > '$CHANGELOG_START' && NR < '$CHANGELOG_END' ' CHANGELOG.rst`
+  release:
+    name: 'Release $TAG'
+    description: 'Created using the release-cli $EXTRA_DESCRIPTION'  # $EXTRA_DESCRIPTION and the $TAG
+    tag_name: '$TAG'                                                 # variables must be defined elsewhere
+    ref: '$CI_COMMIT_SHA'                                            # in the pipeline. For example, in the
+  tags:
+    - inc_mas_server1
+

@@ -1,0 +1,66 @@
+chipease: >=1.0.0
+
+provider : gitlab
+vendor   : incoresemi
+library  : blocks/devices
+name     : ram1rw
+version  : 1.0.0
+
+type: memory_mapped
+
+filesets:
+  design:
+    - ram1rw.bsv
+    - ram1rw_user.bsv
+    - brambe_1rw.bsv
+  sim:
+    - none
+  associated_rtl:
+    - verilog/brambe_1rw_nc.v  
+    - verilog/brambe_1rw_rf.v  
+    - verilog/brambe_1rw_wf.v
+
+description: A Single ported RAM module supporting multiple operating mode policies.
+
+# can be axi4, axi4lite or apb
+bus_protocol: apb
+
+register_map:
+  offset            : 0
+  reserved_space    : 0
+
+parameters:
+  - entries:
+      description: an integer indicating the number of the entries in the ROM structure
+      value: 5
+      place: interface
+  - width:
+      description: an integer indicating the length of each ROM entry
+      value: integer
+      place: interface
+  - banks:
+      description: an integer indicating the number of banks the ROM structure should be split into
+      value: integer
+      place: interface
+  - base: 
+      description: an integer indicating the base address assigned to the ROM in the SoC
+      value: integer
+      place: module
+  - filename:
+      description: a list of filenames which will contain the contents of the ROM-banks in hex format
+      value: list of strings
+      place: module
+  - mode:
+      description: a string indicating the mode of the ports. Can be one of : nc (no-change), wf (write-first) or rf (read-first)
+      value: string
+      place: module
+
+interface : none
+
+memory_map:
+  offset            : 0x1000
+  reserved_space    : 0x1000
+
+interface_signals: none
+
+drivers: none

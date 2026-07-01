@@ -1,0 +1,57 @@
+chipease: >=1.0.0
+
+provider : gitlab
+vendor   : incoresemi
+library  : blocks/devices
+name     : rom
+version  : 1.0.0
+
+type: memory_mapped
+
+filesets:
+  design:
+    - rom.bsv
+    - rom_user.bsv
+  sim:
+    - none
+
+description: A ROM module build using BRAMs from BSV.
+
+# can be axi4, axi4lite or apb
+bus_protocol: apb
+
+register_map:
+  offset            : 0
+  reserved_space    : 0
+
+parameters:
+  - entries:
+      description: an integer indicating the number of the entries in the ROM structure
+      value: 5
+      place: interface
+  - width:
+      description: an integer indicating the length of each ROM entry
+      value: integer
+      place: interface
+  - banks:
+      description: an integer indicating the number of banks the ROM structure should be split into
+      value: integer
+      place: interface
+  - base: 
+      description: an integer indicating the base address assigned to the ROM in the SoC
+      value: integer
+      place: module
+  - filename:
+      description: a list of filenames which will contain the contents of the ROM-banks in hex format
+      value: list of strings
+      place: module
+
+interface : none
+
+memory_map:
+  offset            : 0x1000
+  reserved_space    : 0x1000
+
+interface_signals: none
+
+drivers: none

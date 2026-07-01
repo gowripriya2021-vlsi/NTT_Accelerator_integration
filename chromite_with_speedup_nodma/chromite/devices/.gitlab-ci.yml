@@ -1,0 +1,109 @@
+stages:
+    - pre-merge
+    - release
+
+check-mr-build:
+    stage: pre-merge
+    except:
+        - schedules
+    script:
+        - echo -e "section_start:`date +%s`:source_tools\r\e[0KSetup Initialization"
+        - source /tools/setup.sh
+        - ./manager.sh update_deps
+        - bsc -v
+        - echo -e "section_end:`date +%s`:source_tools\r\e[0Ksection_start:`date +%s`:roms\r\e[0KCompiling Roms"
+        - make TOP_MODULE=mkinst_romapb TOP_DIR=rom TOP_FILE=rom_instance.bsv generate_verilog link_verilator
+        - echo -e "section_end:`date +%s`:roms\r\e[0Ksection_start:`date +%s`:ram1rw\r\e[0KCompiling RAM1rw"
+        - make TOP_MODULE=mkinst_ram1rwapb TOP_DIR=ram1rw TOP_FILE=ram1rw_instance.bsv generate_verilog link_verilator
+        - echo -e "section_end:`date +%s`:ram1rw\r\e[0Ksection_start:`date +%s`:ram2rw\r\e[0KCompiling RAM2rw"
+        - make TOP_MODULE=mkinst_ram2rwapb TOP_DIR=ram2rw TOP_FILE=ram2rw_instance.bsv generate_verilog link_verilator
+        - echo -e "section_end:`date +%s`:ram2rw\r\e[0Ksection_start:`date +%s`:uart\r\e[0KCompiling Uart"
+        - make TOP_MODULE=mkinst_uartapb TOP_DIR=uart TOP_FILE=uart_instance.bsv generate_verilog
+        - make clean
+        - make TOP_MODULE=mkTb TOP_DIR=uart TOP_FILE=tb_uart.bsv
+        - echo -e "section_end:`date +%s`:ram2rw\r\e[0Ksection_start:`date +%s`:clint\r\e[0KCompiling Clint"
+        - make TOP_MODULE=mkinst_aclintapb TOP_DIR=aclint TOP_FILE=aclint_instance.bsv generate_verilog link_verilator
+        - make clean
+
+        - make TOP_MODULE=mkinst_clintapb TOP_DIR=clint TOP_FILE=clint_instance.bsv generate_verilog link_verilator
+        - make clean
+        - make TOP_MODULE=mkTb TOP_DIR=clint TOP_FILE=tb_clint.bsv
+        - echo -e "section_end:`date +%s`:clint\r\e[0Ksection_start:`date +%s`:gpio\r\e[0KCompiling GPIOs"
+        - make TOP_MODULE=mkinst_gpioapb TOP_DIR=gpio TOP_FILE=gpio_instance.bsv generate_verilog link_verilator
+        - make clean
+        - make TOP_MODULE=mkTb TOP_DIR=gpio TOP_FILE=tb_gpio.bsv
+        - echo -e "section_end:`date +%s`:clint\r\e[0Ksection_start:`date +%s`:plic\r\e[0KCompiling PLIC"
+        - make TOP_MODULE=mkinst_plicapb TOP_DIR=plic TOP_FILE=plic_instance.bsv generate_verilog link_verilator
+        - make clean
+        - make TOP_MODULE=mkTb TOP_DIR=plic TOP_FILE=tb_plic.bsv
+        - echo -e "section_end:`date +%s`:gpio\r\e[0K"
+        - echo -e "section_end:`date +%s`:gpio\r\e[0Ksection_start:`date +%s`:bootconfig\r\e[0KCompiling Bootconfig"
+        - make TOP_MODULE=mkinst_bootconfigapb TOP_DIR=bootconfig TOP_FILE=bootconfig_instance.bsv generate_verilog link_verilator
+        - make clean
+        - echo -e "section_end:`date +%s`:bootconfig\r\e[0Ksection_start:`date +%s`:uart16550\r\e[0KCompiling Uart16550"
+        - make TOP_MODULE=mkinst_uart16550axi4l TOP_DIR=uart16550 TOP_FILE=uart16550_instance.bsv generate_verilog link_verilator
+        - make clean
+        - echo -e "section_end:`date +%s`:uart16550\r\e[0Ksection_start:`date +%s`:pwm\r\e[0KCompiling PWMs"
+        - make TOP_MODULE=mkinst_pwmaxi4l TOP_DIR=pwm TOP_FILE=pwm_instance.bsv generate_verilog link_verilator
+        - make clean
+        - echo -e "section_end:`date +%s`:pwm\r\e[0Ksection_start:`date +%s`:spi\r\e[0KCompiling SPI"
+        - make TOP_MODULE=mkinst_spi_axi4l TOP_DIR=spi TOP_FILE=spi_template.bsv generate_verilog link_verilator
+        - make clean
+        - echo -e "section_end:`date +%s`:spi\r\e[0Ksection_start:`date +%s`:prot_ocm\r\e[0KCompiling PROT_OCMs"
+        - make TOP_MODULE=mkinst_prot_ocm_axi4l TOP_DIR=prot_ocm TOP_FILE=prot_ocm_instances.bsv generate_verilog link_verilator
+        - make clean
+        - echo -e "section_end:`date +%s`:prot_ocm\r\e[0Ksection_start:`date +%s`:debugger\r\e[0KCompiling Debugger"
+        - make TOP_MODULE=mkinst_debugapb TOP_DIR=riscvdebug100 TOP_FILE=debug_instance.bsv generate_verilog link_verilator
+        - echo -e "section_end:`date +%s`:debugger\r\e[0K"
+        - make clean
+    only:
+      refs:
+          - merge_requests
+    tags:
+        - incore-group
+
+check-mr-compliance:
+    stage: pre-merge
+    except:
+        - schedules
+    script:
+        - if [[ ! -f CHANGELOG.rst ]] ; then echo "CHANGELOG doesn't exist"; exit 1; fi
+        - export NEWVER=$(grep -P "^\[.*?\]" CHANGELOG.rst -m1 | awk '{print $1}' | sed 's/[][]//g');
+        - export CURVER=$(git describe --tags| cut -f1 -d"-")
+        - echo $NEWVER
+        - echo $CURVER
+        - CURVER=${CURVER//./ }
+        - NEWVER=${NEWVER//./ }
+        - curpatch=$(echo $CURVER | awk '{print $3}')
+        - curminor=$(echo $CURVER | awk '{print $2}')
+        - curmajor=$(echo $CURVER | awk '{print $1}')
+        - newpatch=$(echo $NEWVER | awk '{print $3}')
+        - newminor=$(echo $NEWVER | awk '{print $2}')
+        - newmajor=$(echo $NEWVER | awk '{print $1}')
+        - if [ $newmajor = $curmajor ] && [ $newminor = $curminor ] && [ $newpatch -gt $curpatch ]; then echo "Patch Update Accepted OK"; exit 0; fi
+        - if [ $newmajor = $curmajor ] && [ $newminor = $curminor ] && [ $newpatch -le $curpatch ]; then echo "Revise Patch Atleast!"; exit 1; fi
+        - if [ $newmajor = $curmajor ] && [ $newminor -gt $curminor ] && [ $newpatch = 0 ]; then echo "Minor Update Accepted OK!"; exit 0; fi
+        - if [ $newmajor = $curmajor ] && [ $newminor -gt $curminor ] && [ $newpatch != 0 ]; then echo "For Minor changes the patches should be 0"; exit 1; fi
+        - if [ $newmajor = $curmajor ] && [ $newminor -lt $curminor ]; then echo "Minor version should greater than previuos"; exit 1; fi
+        - if [ $newmajor -gt $curmajor ] && [ $newminor = 0 ] && [ $newpatch = 0 ]; then echo "Major Updated Accepted OK"; exit 0; fi
+        - echo  "For Major updates Minor and Patches should be 0"
+        - exit 1
+    only:
+      refs:
+          - merge_requests
+    tags:
+        - incore-group
+
+release:
+    stage: release
+    script:
+        - echo -e "section_start:`date +%s`:source_tools\r\e[0KCreating Tag on Repo"
+        - python3 /scratch/version-extract-rst.py
+        - echo -e "section_end:`date +%s`:tag\r\e[0K"
+    only:
+        refs:
+            - master
+    tags:
+        - incore-group
+    except:
+        - schedules

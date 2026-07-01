@@ -1,0 +1,53 @@
+chipease: 1.0.0
+
+
+provider : gitlab
+vendor   : incoresemi
+library  : blocks/devices
+name     : spi
+version  : 1.4.0
+
+type: memory_mapped
+
+filesets:
+  design:
+    - spi.defines
+    - spi_atom.bsv
+    - spi_params.bsv
+    - spi.bsv
+  sim:
+    - tb_spi.bsv
+
+description: Serial Peripheral Interface (SPI) for data transfer, that supports
+ Controller and Peripheral Modes, Prescalar based Baud rate control, Extended
+ delays for Slow peripherals, Bit controlled Simplex, Half-duplex and Full duplex
+ transfers.
+
+# Choices: ['apb', 'axi4l', 'axi4']
+interface_bus: apb
+
+# base_address
+# Integer
+# The base address where the memory map of the configuration register starts
+#
+# bytes_reserved
+# Integer >= 44
+# The number of bytes reserved for this instance. This can be much larger than the actual bytes
+# required for theconfiguration registers but cannot be smaller than it.
+register_map:
+  base_address: 0x20100
+  bytes_reserved: 0xFF
+
+# periph_count
+# Integer >= 1
+# an integer indicating number of peripherals controllable by SPI module
+#
+# fifo_depth
+# Integer >= 2
+# an integer indicating depth of FIFO's used inside the module
+
+parameters:
+  periph_count:
+    value: 1
+  fifo_depth:
+    value: 20

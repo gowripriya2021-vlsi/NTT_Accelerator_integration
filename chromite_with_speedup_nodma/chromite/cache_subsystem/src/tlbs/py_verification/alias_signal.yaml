@@ -1,0 +1,4 @@
+mkptw_instance:
+  input:
+    rdy: RDY_subifc_from_tlb_put
+    

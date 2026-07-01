@@ -1,0 +1,43 @@
+XLEN=64
+
+# Supervisor related settings
+SUPERVISOR=sv39
+DTLBSIZE=4
+ASIDWIDTH=9
+ATOMIC=enable
+
+DCACHE=enable
+DSETS=64
+DWORDS=8
+DBLOCKS=8
+DWAYS=4
+DESIZE=1
+DSBSIZE=2
+DLBSIZE=8
+DFBSIZE=8
+DREPL=1
+DRESET=1
+DDBANKS=4
+DTBANKS=1
+DBUSWIDTH=64
+ECC=disable
+ONE_HOT=0
+ECC_TEST=disable
+PORT=1r1w
+PMPSIZE=0
+GRAINBITS=3
+RESERVATION_SZ=8
+IOBUFFSIZE=2
+
+OVLASSERT=disable
+SVAASSERT=disable
+
+THREADS=1
+COVERAGE=none
+TRACE=disable
+
+TOP_MODULE:=mkdmem_tb
+DIR:=../:./common_bsv:./bsvwrappers/common_lib:../../tlbs/:../../pmp/
+TOP_DIR:= ./
+TOP_FILE:= dmem_tb.bsv
+
